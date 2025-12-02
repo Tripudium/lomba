@@ -1,0 +1,83 @@
+[project]
+name = "lomba"
+version = "0.1.0"
+description = "Tripudium LOB Mamba models"
+readme = "README.md"
+authors = [
+    { name = "Francesco", email = "francesco.papini@warwick.ac.uk"},
+    { name = "Martin", email = "martin@tripudium.tech" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "asyncio>=4.0.0",
+    "databento>=0.65.0",
+    "datasets>=4.0.0",
+    "flax>=0.12.0",
+    "hftbacktest>=2.4.2",
+    "hydra-core>=1.3.2",
+    "ipykernel>=6.29.5",
+    "ipython==8.32.0",
+    "jax>=0.8.0",
+    "lightning>=2.5.5",
+    "mambapy>=1.2.0",
+    "matplotlib>=3.10.1",
+    "numba>=0.62.1",
+    "numpy>=2.2.3",
+    "omegaconf>=2.3.0",
+    "optax>=0.2.6",
+    "optuna>=4.5.0",
+    "pandas>=2.3.2",
+    "pathlib>=1.0.1",
+    "plotly>=6.3.1",
+    "polars>=1.23.0",
+    "pyarrow>=20.0.0",
+    "pybit>=5.9.0",
+    "pytest>=8.3.4",
+    "python-dotenv>=1.1.1",
+    "pytz>=2025.1",
+    "pyyaml>=6.0.0",
+    "ruff>=0.9.9",
+    "scikit-learn>=1.7.2",
+    "seaborn>=0.13.2",
+    "tardis-client>=1.3.10",
+    "tardis-dev>=2.0.0a14",
+    "torch>=2.8.0",
+    "torchinfo>=1.8.0",
+    "tqdm>=4.67.1",
+    "typing>=3.10.0.0",
+    "wandb>=0.21.4",
+    "websockets>=15.0.1",
+]
+
+[project.scripts]
+lomba = "lomba:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.optional-dependencies]
+dev = [
+    "jupyterlab",
+    "ipykernel",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest",
+    "ruff>=0.9.9",
+]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "--maxfail=1 --disable-warnings -q"
+testpaths = [
+    "tests",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I"] # Enable standard, pyflakes & import-sorting rules
+

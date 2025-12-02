@@ -1,0 +1,40 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+.ipynb_checkpoints/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# uv temporary or cache files
+.uv/
+uv.lock
+
+# Virtual environment
+.venv/
+env/
+
+# Environment variables with API keys
+.env
+
+# Optional local Python version setting (if you don't want to enforce it)
+.python-version
+
+# Data
+data/tardis/
+data/bybit/
+data/binance/
+data/kraken/
+data/okx/
+data/poloniex/
+data/probit/
+data/upbit/
+data/zb/
+data/tardis/
+data/lobster/
+
+# Old scripts

@@ -1,0 +1,17 @@
+onlyOneBackUp: 1
+defaultIndent: "  "
+modifyLineBreaks:
+  textWrapOptions:
+    columns: 100
+    when: after
+    comments: false
+  environments:
+    verbatim:
+      wrap: 0
+  specialBeginEnd:
+    displaymath:
+      wrap: 0
+lookForAlignDelims:
+  aligned: 0
+  align: 0
+  equation: 0

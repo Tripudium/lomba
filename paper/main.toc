@@ -1,0 +1,26 @@
+\babel@toc {UKenglish}{}\relax 
+\contentsline {section}{\tocsection {}{1}{Introduction}}{1}{section.1}%
+\contentsline {section}{\tocsection {}{2}{Preliminaries}}{2}{section.2}%
+\contentsline {subsection}{\tocsubsection {}{2.1}{Limit order book dynamics}}{2}{subsection.2.1}%
+\contentsline {subsection}{\tocsubsection {}{2.2}{Temporal point processes}}{2}{subsection.2.2}%
+\contentsline {subsection}{\tocsubsection {}{2.3}{State-space sequence models}}{3}{subsection.2.3}%
+\contentsline {section}{\tocsection {}{3}{Mixture-of-exponentials temporal point processes}}{3}{section.3}%
+\contentsline {paragraph}{\tocparagraph {}{}{Connections to prior work.}}{3}{section*.2}%
+\contentsline {section}{\tocsection {}{4}{Model}}{3}{section.4}%
+\contentsline {subsection}{\tocsubsection {}{4.1}{Feature extraction and binning}}{4}{subsection.4.1}%
+\contentsline {subsection}{\tocsubsection {}{4.2}{Backbone}}{4}{subsection.4.2}%
+\contentsline {subsection}{\tocsubsection {}{4.3}{Temporal head: mixture of exponentials}}{4}{subsection.4.3}%
+\contentsline {subsection}{\tocsubsection {}{4.4}{Hierarchical mark heads}}{5}{subsection.4.4}%
+\contentsline {subsection}{\tocsubsection {}{4.5}{Sampling}}{5}{subsection.4.5}%
+\contentsline {section}{\tocsection {}{5}{Training setup}}{6}{section.5}%
+\contentsline {subsection}{\tocsubsection {}{5.1}{Data splits and bin fitting}}{6}{subsection.5.1}%
+\contentsline {subsection}{\tocsubsection {}{5.2}{Loss functions}}{6}{subsection.5.2}%
+\contentsline {subsection}{\tocsubsection {}{5.3}{Optimization}}{6}{subsection.5.3}%
+\contentsline {subsection}{\tocsubsection {}{5.4}{Inference and calibration}}{6}{subsection.5.4}%
+\contentsline {section}{\tocsection {}{6}{Evaluation plan}}{6}{section.6}%
+\contentsline {section}{\tocsection {}{7}{Related work}}{7}{section.7}%
+\contentsline {paragraph}{\tocparagraph {}{}{Neural temporal point processes.}}{7}{section*.5}%
+\contentsline {paragraph}{\tocparagraph {}{}{State-space sequence models.}}{7}{section*.6}%
+\contentsline {paragraph}{\tocparagraph {}{}{Limit order book modeling.}}{7}{section*.7}%
+\contentsline {section}{\tocsection {}{8}{Conclusion and next steps}}{7}{section.8}%
+\contentsline {section}{\tocsection {}{}{References}}{7}{section*.8}%

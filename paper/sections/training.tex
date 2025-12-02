@@ -1,0 +1,34 @@
+\section{Training setup}
+
+\subsection{Data splits and bin fitting}
+We fit quantile-based bin edges for size and time on the training portion (default 80\%), avoiding look-ahead. Price bins use a fixed centered window around the spread with two tails. Validation uses the remaining held-out segment (default 10\%), with the final 10\% reserved for future test reporting. Sliding windows of length $L$ and stride $s$ build sequences; the last position in each window is masked for mark supervision.
+
+\subsection{Loss functions}
+The total objective is a weighted sum:
+\[
+\mathcal{L} = \lambda_{\text{time}} \, \mathcal{L}_{\text{TPP}} + \sum_{f} \bigl(\lambda_{f}^{\text{coarse}} \mathcal{L}_{f}^{\text{coarse}} + \lambda_{f}^{\text{resid}} \mathcal{L}_{f}^{\text{resid}}\bigr),
+\]
+where $f$ ranges over marks (price, size, time, type, side, level).
+\begin{itemize}[leftmargin=*,itemsep=0.25em]
+    \item \textbf{Temporal loss} $\mathcal{L}_{\text{TPP}}$ is the negative log-likelihood from the mixture-of-exponentials head. Observed events use $\log \lambda - \Lambda$; censored events contribute $\Lambda(\Delta t_{\max})$.
+    \item \textbf{Mark losses} use cross-entropy with neighbor-aware label smoothing. We construct a smoothing matrix $S$ based on the adjacency of bins. For a target bin $y$, the smoothed target distribution $q(k)$ is:
+    \[
+    q(k) = \begin{cases}
+    1 - \epsilon & \text{if } k = y \\
+    \epsilon / |N(y)| & \text{if } k \in N(y) \\
+    0 & \text{otherwise}
+    \end{cases}
+    \]
+    where $N(y)$ is the set of immediate neighbors of $y$ in the ordered bin sequence, and $\epsilon$ is a smoothing parameter. This is applied to both coarse and residual targets, penalizing "near misses" less than far-off errors.
+\end{itemize}
+Continuous targets that exceed a censoring cap are masked, aligning the supervision with the near-term horizon of interest.
+
+\subsection{Optimization}
+We use the AdamW optimizer with $\beta_1=0.9, \beta_2=0.999$, and weight decay of $0.1$. The learning rate follows a cosine decay schedule with a linear warmup phase. Specifically, for the first $W$ steps, the learning rate increases linearly to $\eta_{\text{peak}}$, then decays according to:
+\[
+\eta_t = \frac{\eta_{\text{peak}}}{2} \left(1 + \cos\left(\frac{\pi (t - W)}{T - W}\right)\right)
+\]
+where $T$ is the total number of steps. Gradient clipping (norm 1.0) stabilizes training. Dropout is applied to embeddings (0.15) and MLP blocks (0.32). Mixed precision (FP16/BF16) is enabled for efficiency. Key hyperparameters include mixture size $K=3$, horizon $\tau=0.75$s, and model dimension $d=512$.
+
+\subsection{Inference and calibration}
+At inference, $P(\Delta t \le \tau)$ provides a calibrated near-horizon arrival probability. Mark posteriors combine coarse and residual distributions. Reliability is monitored via Brier score and calibration bins; sampling utilities enable scenario analysis and downstream simulators.

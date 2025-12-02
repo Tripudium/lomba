@@ -1,0 +1,53 @@
+\section{Preliminaries}
+
+\subsection{Limit order book dynamics}
+A limit order book (LOB) is an electronic record of buy and sell queues indexed by price levels. Let $b_k(t)$ 
+and $a_k(t)$ denote queue sizes at the $k$-th level at time $t$from the best bid and best ask, respectively, 
+with best prices $p^{\text{bid}}(t)$ and $p^{\text{ask}}(t)$ such that $p^{\text{bid}}(t) < p^{\text{ask}}(t)$. 
+Events update the state of the LOB via:
+\begin{itemize}[leftmargin=*,itemsep=0.25em]
+    \item \textbf{Limit add}: insert volume $s$ at price $p$ on side $\sigma \in \{\text{buy},\text{sell}\}$, increasing the corresponding queue: $b_k \gets b_k + s$ or $a_k \gets a_k + s$ when $p$ matches level $k$.
+    \item \textbf{Cancel/amend}: remove or reduce standing volume at a given level.
+    \item \textbf{Marketable order}: consume volume against the opposite queue. If volume 
+    sweeps multiple levels, best prices update. Trades are recorded as executions.
+\end{itemize}
+The midprice is $m(t) = \frac{1}{2}\bigl(p^{\text{bid}}(t) + p^{\text{ask}}(t)\bigr)$ and the spread 
+is $p^{\text{ask}}(t) - p^{\text{bid}}(t)$. Queue evolution is piecewise-constant with jumps at event 
+times; see \citep{gould2013limit,bouchaud2008markets,cont2010stochastic,abergel2016limit} for formal treatments. 
+Most electronic venues operate price-time priority: orders are first ranked by price (best bid/ask at the front), 
+and within each price level by arrival time. 
+
+A market maker maintains resting bids and asks, earning the spread while bearing inventory and 
+adverse-selection risk. Key controls include (i) \emph{quote placement} (choosing price levels and sizes 
+relative to the spread and queue depth), (ii) \emph{quote lifetime} (cancelling or repricing as flow risk 
+changes), and (iii) \emph{inventory targets} (skewing quotes or size to neutralize exposure). 
+Short-horizon forecasts of arrival intensity and mark distributions are central to these decisions.
+
+\subsection{Temporal point processes}
+We model the arrival times of LOB events using temporal point processes (TPPs). Let $\{t_i\}_{i \ge 1}$ be a strictly increasing sequence of event times. The history up to time $t$ is denoted by $\mathcal{H}_t = \{(t_i, m_i) : t_i < t\}$, comprising the times and marks $m_i$ (e.g., price, size, type) of all events occurring before $t$.
+A TPP is fully characterized by its conditional intensity function $\lambda(t \mid \mathcal{H}_t)$, which represents the instantaneous rate of a new event arrival given the history:
+\[
+\lambda(t \mid \mathcal{H}_t) = \lim_{\Delta t \to 0^+} \frac{P(N(t + \Delta t) - N(t) = 1 \mid \mathcal{H}_t)}{\Delta t},
+\]
+where $N(t)$ counts the number of events up to time $t$.
+Given the most recent event at $t_n$, the probability density function of the next inter-arrival time $\Delta t = t_{n+1} - t_n$ is
+\[
+f(\Delta t \mid \mathcal{H}_{t_n}) = \lambda(t_n + \Delta t \mid \mathcal{H}_{t_n}) \exp\!\left(-\int_{t_n}^{t_n + \Delta t} \lambda(u \mid \mathcal{H}_u)\,du\right).
+\]
+For a mixture-of-exponentials intensity with non-negative weights $\alpha_k$ and rates $\beta_k$,
+\begin{equation}
+\lambda(\Delta t) = \sum_{k=1}^K \alpha_k \beta_k \exp(-\beta_k \Delta t), \qquad
+\Lambda(\Delta t) = \sum_{k=1}^K \alpha_k \bigl(1 - e^{-\beta_k \Delta t}\bigr)/\beta_k,
+\label{eq:moe-intensity}
+\end{equation}
+which yields closed-form survival $S(\Delta t) = \exp(-\Lambda(\Delta t))$ and horizon probability $P(\Delta t \le \tau) = 1 - \exp(-\Lambda(\tau))$. This tractability motivates the head used in our architecture.
+
+\subsection{State-space sequence models}
+Continuous-time linear state-space models (SSMs) define a latent $x(t) \in \mathbb{R}^d$ driven by input $u(t)$:
+\begin{align}
+\dot{x}(t) &= A x(t) + B u(t), \\
+y(t) &= C x(t) + D u(t),
+\end{align}
+with learned $A,B,C,D$. Discretization with step $\Delta$ yields a recurrence $x_{n+1} = \bar{A} x_n + \bar{B} u_n$ and output $y_n = C x_n + D u_n$, equivalent to a convolution with a kernel derived from $(\bar{A},\bar{B},C,D)$. This gives linear-time, memory-efficient inference for long sequences, in contrast to the quadratic cost of attention.
+
+Mamba \citep{gu2023mamba} is a \emph{selective} SSM: the effective transition and input matrices are modulated by the current token, gating information flow based on content while retaining the fast scan/convolution implementation. The result combines long-context capacity with low latency and footprint, making it suitable for high-frequency LOB streams where both history length and computational budget are critical.
