@@ -40,7 +40,6 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple, Any
 
 import numpy as np
-import pandas as pd
 import polars as pl
 import torch
 import torch.nn as nn
@@ -433,29 +432,6 @@ def validate_messages(df: pl.DataFrame, source: str = "unknown") -> None:
           f"time span: {df['time'].max() - df['time'].min():.2f}s")
 
 
-def load_lobster_messages(csv_path: str, nrows: Optional[int] = None) -> pd.DataFrame:
-    """
-    Load a LOBSTER message file.
-    
-    DEPRECATED: Use load_messages() with source='lobster' instead.
-    This function is kept for backward compatibility only.
-    """
-    import warnings
-    warnings.warn(
-        "load_lobster_messages() is deprecated. Use load_messages() instead.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    cols = ["time", "type", "order_id", "size", "price", "direction"]
-    df = pd.read_csv(csv_path, header=None, names=cols, nrows=nrows)
-    df["time"] = df["time"].astype(np.float64)
-    df["type"] = df["type"].astype(np.int32)
-    df["size"] = df["size"].astype(np.float32)
-    df["price"] = (df["price"].astype(np.float32)) / 10000.0
-    df["direction"] = df["direction"].astype(np.int8)
-    return df
-
-
 @dataclass
 class DerivedFeatures:
     dp_ticks: np.ndarray
@@ -473,56 +449,86 @@ class DerivedFeatures:
 
 
 def compute_derived_features(
-    df: pd.DataFrame,
+    df: pl.DataFrame,
     tick_size: float = 0.01,
     time_scale: Optional[float] = None,
 ) -> DerivedFeatures:
-    """Compute relative features and inter-arrival statistics."""
-    price = df["price"].to_numpy(dtype=np.float32)
-    size = df["size"].to_numpy(dtype=np.float32)
-    time_arr = df["time"].to_numpy(dtype=np.float64)
-    msg_type = df["type"].to_numpy(dtype=np.int32)
-    side_raw = df["direction"].to_numpy(dtype=np.int8)
-
-    p_prev = np.roll(price, 1)
-    p_prev[0] = price[0]
-    dp = price - p_prev
-    dp_ticks = np.rint(dp / float(tick_size)).astype(np.int32)
-
-    dt_prev = np.diff(time_arr, prepend=time_arr[0])
-    dt_prev = np.maximum(dt_prev, 0.0)
+    """
+    Compute relative features and inter-arrival statistics.
+    """
+    # Compute time scale if not provided
     if time_scale is None:
-        positive = dt_prev[dt_prev > 0]
-        if positive.size == 0:
+        prev_dt = df["time"].diff().fill_null(0.0)
+        positive = prev_dt.filter(prev_dt > 0.0)
+        if len(positive) == 0:
             time_scale = 1e-3
         else:
-            time_scale = float(max(np.median(positive), 1e-6))
-    dt_log = np.log1p(dt_prev / float(time_scale)).astype(np.float32)
-
-    log_size = np.log1p(size).astype(np.float32)
-
-    dt_next = np.diff(time_arr, append=(time_arr[-1] + time_scale))
-    has_next = np.ones_like(dt_next, dtype=bool)
-    has_next[-1] = False
-
-    abs_dp = np.abs(dp_ticks)
-    level = np.zeros_like(abs_dp, dtype=np.int32)
-    level[abs_dp == 0] = 0
-    level[abs_dp >= 1] = 1
-
+            time_scale = float(max(positive.median(), 1e-6))
+    
+    features_df = df.select([
+        pl.col("time").alias("time_absolute"),
+        pl.col("type").alias("type_code").cast(pl.Int32),
+        pl.col("direction").alias("side_code").cast(pl.Int8),
+        pl.col("size").cast(pl.Float32),
+        pl.col("price").cast(pl.Float32),
+        pl.col("price").diff().fill_null(0.0).alias("dp"),
+        pl.col("time").diff().fill_null(0.0).clip(lower_bound=0.0).alias("dt_prev"),
+        pl.col("time").diff(-1).fill_null(time_scale).alias("dt_next"),
+        
+        # Has next event (all True except last)
+        (pl.lit(True)).alias("has_next_event"),
+    ]).with_columns([
+        # Compute derived features from base features
+        (pl.col("dp") / tick_size).round().cast(pl.Int32).alias("dp_ticks"),
+        (pl.col("size") + 1.0).log().cast(pl.Float32).alias("log_size"),
+        ((pl.col("dt_prev") / time_scale) + 1.0).log().cast(pl.Float32).alias("dt_log"),
+    ]).with_columns([
+        # Level proxy based on absolute dp_ticks
+        pl.when(pl.col("dp_ticks").abs() == 0)
+          .then(pl.lit(0))
+          .when(pl.col("dp_ticks").abs() >= 1)
+          .then(pl.lit(1))
+          .otherwise(pl.lit(0))
+          .cast(pl.Int32)
+          .alias("level_proxy")
+    ])
+    
+    # Set last row's has_next_event to False
+    features_df = features_df.with_columns(
+        pl.when(pl.int_range(pl.len()) == pl.len() - 1)
+          .then(False)
+          .otherwise(pl.col("has_next_event"))
+          .alias("has_next_event")
+    ).select(
+        pl.col("dp_ticks").cast(pl.Int32),
+        pl.col("log_size").cast(pl.Float32),
+        pl.col("dt_log").cast(pl.Float32),
+        pl.col("dt_prev").cast(pl.Float32),
+        pl.col("dt_next").cast(pl.Float32),
+        pl.col("has_next_event").cast(pl.Boolean),
+        pl.col("type_code").cast(pl.Int32),
+        pl.col("side_code").cast(pl.Int8),
+        pl.col("level_proxy").cast(pl.Int32),
+        pl.col("tick_size").cast(pl.Float32),
+        pl.col("time_scale").cast(pl.Float32),
+        pl.col("time_absolute").cast(pl.Float32),
+    )
+    
+    # Extract to numpy arrays for DerivedFeatures dataclass
+    # TODO: keep as polars?
     return DerivedFeatures(
-        dp_ticks=dp_ticks,
-        log_size=log_size,
-        dt_log=dt_log,
-        dt_prev=dt_prev.astype(np.float32),
-        dt_next=dt_next.astype(np.float32),
-        has_next_event=has_next,
-        type_code=msg_type,
-        side_code=side_raw,
-        level_proxy=level,
+        dp_ticks=features_df["dp_ticks"].to_numpy(),
+        log_size=features_df["log_size"].to_numpy(),
+        dt_log=features_df["dt_log"].to_numpy(),
+        dt_prev=features_df["dt_prev"].to_numpy().astype(np.float32),
+        dt_next=features_df["dt_next"].to_numpy().astype(np.float32),
+        has_next_event=features_df["has_next_event"].to_numpy(),
+        type_code=features_df["type_code"].to_numpy().astype(np.int32),
+        side_code=features_df["side_code"].to_numpy().astype(np.int8),
+        level_proxy=features_df["level_proxy"].to_numpy(),
         tick_size=float(tick_size),
         time_scale=float(time_scale),
-        time_absolute=time_arr.astype(np.float32),
+        time_absolute=features_df["time_absolute"].to_numpy().astype(np.float32),
     )
 
 
@@ -1985,23 +1991,19 @@ def train_with_wandb(config: Dict = None):
     df_pl = load_messages(
         product=data_config["product"],
         source=data_config["source"],
-        start_time=data_config.get("start_time"),
-        end_time=data_config.get("end_time"),
-        start_date=data_config.get("start_date"),  # Fallback if timestamps not provided
-        end_date=data_config.get("end_date"),
+        times=[data_config.get("start_time"), data_config.get("end_time")],
     )
     
     # Validate data quality
     validate_messages(df_pl, source=data_config["source"])
     
-    # Convert to pandas for compatibility with compute_derived_features
-    df = df_pl.to_pandas()
-    print(f"[data] Loaded {len(df)} events")
+    # Use polars DataFrame directly
+    print(f"[data] Loaded {len(df_pl)} events")
 
-    feats_all = compute_derived_features(df, tick_size=cfg.get("tick_size", 0.01))
+    feats_all = compute_derived_features(df_pl, tick_size=cfg.get("tick_size", 0.01))
 
     # Fit bins on training data
-    N = len(df)
+    N = len(df_pl)
     train_end = int(N * 0.8)
     train_slice = slice(0, train_end)
 
