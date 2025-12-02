@@ -30,6 +30,8 @@ from __future__ import annotations
 import argparse
 import math
 from datetime import datetime, timedelta
+import pytz
+import calendar
 from pathlib import Path
 import os
 import random
@@ -88,7 +90,12 @@ DEFAULT_CONFIG = {
     "tau": 0.75,
 
     # Data
-    "data_path": "data/raw/martin_lobster/RTSX_3days_2020-06-01_to_03_message_fixed.csv",
+    "data_config": {
+        "source": "lobster",
+        "product": "AAPL",
+        "start_time": "200601.000000",
+        "end_time": "200603.235959",
+    },
     "tick_size": 0.01,
     "dt_cap": 10.0,
 
@@ -238,22 +245,37 @@ EXCHANGE_CONFIGS = {
         },
         time_unit="ns",
         price_scale=1.0,
-    ),
+    )
 }
+    
+def nanoseconds(input: Union[str, datetime]) -> int:
+    """
+    Convert datetime or string input to return nanosecond UNIX timestamp (int).
 
+    The input can by one of the following:
+        - YYMMDD.HHMM
+        - dt.datetime (with or without timezone)
 
-def get_date_range(start: str, end: str) -> List[str]:
-    """Generate a list of dates between start and end (inclusive)."""
-    start_dt = datetime.strptime(start, "%Y-%m-%d")
-    end_dt = datetime.strptime(end, "%Y-%m-%d")
-    delta = end_dt - start_dt
-    return [(start_dt + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(delta.days + 1)]
-
+        Example:
+            >>> nanoseconds(dt.datetime(2018, 3, 20, 18, 30, tzinfo=pytz.timezone('America/Chicago')))
+        1521588600000000000
+    """
+    assert isinstance(input, datetime) or isinstance(input, str)
+    if isinstance(input, str):
+        try:
+            input = datetime.strptime(input, "%y%m%d.%H%M%S")
+        except ValueError:
+            print("Input string not in correct format")
+    # Deal with some timezone issues
+    used_tz = input.tzinfo if input.tzinfo is not None else pytz.utc
+    input = used_tz.localize(input.replace(tzinfo=None))
+    time_tuple = input.utctimetuple()
+    timestamp = 1000 * (calendar.timegm(time_tuple) * 1000 * 1000 + input.microsecond)
+    return timestamp
 
 def load_messages(
     product: str,
-    start_date: str,
-    end_date: str,
+    times: List[str],
     source: str,
     config: Optional[ExchangeConfig] = None,
 ) -> pl.DataFrame:
@@ -261,20 +283,33 @@ def load_messages(
     Unified dataloader for different sources.
     
     Args:
-        source: Name of the source (key in EXCHANGE_CONFIGS).
         product: Product identifier (e.g. 'RTS2009', 'AAPL').
-        start_date: Start date in 'YYYY-MM-DD' format.
-        end_date: End date in 'YYYY-MM-DD' format.
+        start_time: Start timestamp in 'YYMMDD.HHMMSS' format (e.g., '200622.093000').
+        end_time: End timestamp in 'YYMMDD.HHMMSS' format (e.g., '200622.160000').
+        source: Name of the source (key in EXCHANGE_CONFIGS).
         config: Optional custom configuration.
         
     Returns:
         pl.DataFrame with standard columns: time, type, size, price, direction.
+        
+    Note:
+        If start_time/end_time are provided, dates are inferred from them.
+        Otherwise, start_date/end_date must be provided.
     """
     cfg = config or EXCHANGE_CONFIGS.get(source)
     if cfg is None:
         raise ValueError(f"Unknown source: {source}")
+    
+    # Parse timestamps directly to datetime objects
+    try:    
+        start_dt = datetime.strptime(times[0], '%y%m%d.%H%M%S')
+        end_dt = datetime.strptime(times[-1], '%y%m%d.%H%M%S')
+    except ValueError as e:
+        raise ValueError("Invalid timestamp format. Expected 'YYMMDD.HHMMSS'.") from e
 
-    dates = get_date_range(start_date, end_date)
+    delta = end_dt - start_dt
+    dates = [(start_dt + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(delta.days + 1)]
+    
     dfs = []
     
     # Resolve base path relative to the script location or current working directory
@@ -290,18 +325,14 @@ def load_messages(
         if not file_path.exists():
             print(f"Warning: File not found: {file_path}")
             continue
-            
         try:
-            # Read parquet using polars for speed and consistency with existing code
             df = pl.read_parquet(file_path)
-            
-            # Rename columns
+
+            # Rename columns and select relevant ones
             rename_map = {k: v for k, v in cfg.column_mapping.items() if k in df.columns}
             df = df.rename(rename_map)
-            
-            # Select required columns
+            # TODO: make this configurable
             required_cols = ["time", "type", "size", "price", "direction"]
-            # Check if all required columns are present
             missing = [c for c in required_cols if c not in df.columns]
             if missing:
                 print(f"Warning: Missing columns {missing} in {file_path}")
@@ -310,7 +341,7 @@ def load_messages(
             cols_to_select = required_cols + (["order_id"] if "order_id" in df.columns else [])
             df = df.select(cols_to_select)
             
-            # Type conversions and scaling
+            # Type conversions and scaling (time is done after concatenating)
             
             # Time
             if cfg.time_unit == "ns":
@@ -321,7 +352,7 @@ def load_messages(
                 df = df.with_columns(pl.col("time").cast(pl.Float64) / 1e6)
             else:
                 df = df.with_columns(pl.col("time").cast(pl.Float64))
-                
+            
             # Price
             if cfg.price_scale != 1.0:
                 df = df.with_columns(pl.col("price") * cfg.price_scale)
@@ -333,14 +364,13 @@ def load_messages(
                     pl.when(pl.col("direction")).then(1).otherwise(-1).cast(pl.Int8).alias("direction")
                 )
             
-            # Cast other types to match train_wandb expectations
             df = df.with_columns([
                 pl.col("type").cast(pl.Int32),
                 pl.col("size").cast(pl.Float32),
                 pl.col("price").cast(pl.Float32),
                 pl.col("direction").cast(pl.Int8),
             ])
-            
+        
             dfs.append(df)
             
         except Exception as e:
@@ -348,16 +378,74 @@ def load_messages(
             continue
 
     if not dfs:
-        print(f"No data loaded for {exchange} {product} {start_date} to {end_date}")
-        return pd.DataFrame(columns=["time", "type", "size", "price", "direction"])
+        print(f"No data loaded for {source} {product} {start_date} to {end_date}")
+        return pl.DataFrame(schema={
+            "time": pl.Float64,
+            "type": pl.Int32,
+            "size": pl.Float32,
+            "price": pl.Float32,
+            "direction": pl.Int8,
+        })
 
-    full_df = pl.concat(dfs)
-    full_df = full_df.sort("time")
+    full_df = pl.concat(dfs).sort("time")
+
+    start_s = float(nanoseconds(start_dt)) / 1e9
+    end_s = float(nanoseconds(end_dt)) / 1e9
+    full_df = full_df.filter((pl.col("time") >= start_s) & (pl.col("time") <= end_s))
     
     return full_df
 
+def validate_messages(df: pl.DataFrame, source: str = "unknown") -> None:
+    """
+    Validate loaded message data for quality issues.
+    
+    Args:
+        df: Polars DataFrame with message data
+        source: Name of the data source for error messages
+        
+    Raises:
+        ValueError: If validation fails
+    """
+    if df.shape[0] == 0:
+        raise ValueError(f"Empty DataFrame from {source}")
+    
+    # Check for required columns
+    required = ["time", "type", "size", "price", "direction"]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns from {source}: {missing}")
+    
+    # Check time is sorted
+    if not df["time"].is_sorted():
+        raise ValueError(f"Time column not sorted in {source} data")
+    
+    # Check for null values
+    null_counts = df.null_count()
+    total_nulls = sum(null_counts.row(0))
+    if total_nulls > 0:
+        raise ValueError(f"Found {total_nulls} null values in {source} data")
+    
+    # Check for invalid sizes (negative or zero)
+    if (df["size"] <= 0).any():
+        raise ValueError(f"Found invalid (<=0) sizes in {source} data")
+    
+    print(f"[validation] {source}: {len(df):,} events, "
+          f"time span: {df['time'].max() - df['time'].min():.2f}s")
+
+
 def load_lobster_messages(csv_path: str, nrows: Optional[int] = None) -> pd.DataFrame:
-    """Load a LOBSTER message file."""
+    """
+    Load a LOBSTER message file.
+    
+    DEPRECATED: Use load_messages() with source='lobster' instead.
+    This function is kept for backward compatibility only.
+    """
+    import warnings
+    warnings.warn(
+        "load_lobster_messages() is deprecated. Use load_messages() instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     cols = ["time", "type", "order_id", "size", "price", "direction"]
     df = pd.read_csv(csv_path, header=None, names=cols, nrows=nrows)
     df["time"] = df["time"].astype(np.float64)
@@ -1884,12 +1972,33 @@ def train_with_wandb(config: Dict = None):
     print(f"[wandb] Run: {wandb.run.name} ({wandb.run.id})")
     print(f"[device] Using {device}")
 
-    # Load data
-    print(f"[data] Loading from {cfg['data_path']}...")
-    df = load_lobster_messages(cfg["data_path"])
+    # Load data using unified dataloader
+    # Parse data source and timestamps from config
+    data_config = cfg.get("data_config", {
+        "source": "lobster",
+        "product": "RTSX",
+        "start_time": "200601.000000",
+        "end_time": "200603.235959",
+    })
+    
+    print(f"[data] Loading {data_config['product']} from {data_config['source']}...")
+    df_pl = load_messages(
+        product=data_config["product"],
+        source=data_config["source"],
+        start_time=data_config.get("start_time"),
+        end_time=data_config.get("end_time"),
+        start_date=data_config.get("start_date"),  # Fallback if timestamps not provided
+        end_date=data_config.get("end_date"),
+    )
+    
+    # Validate data quality
+    validate_messages(df_pl, source=data_config["source"])
+    
+    # Convert to pandas for compatibility with compute_derived_features
+    df = df_pl.to_pandas()
     print(f"[data] Loaded {len(df)} events")
 
-    feats_all = compute_derived_features(df, tick_size=cfg["tick_size"])
+    feats_all = compute_derived_features(df, tick_size=cfg.get("tick_size", 0.01))
 
     # Fit bins on training data
     N = len(df)
