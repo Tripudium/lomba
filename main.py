@@ -210,7 +210,7 @@ class ExchangeConfig:
 
 EXCHANGE_CONFIGS = {
     "mic": ExchangeConfig(
-        data_path="data/mic/processed",
+        data_path="data/mic",
         filename_template="{date}__RTSX_FUT__{product}.parquet",
         date_format="%Y-%m-%d",
         column_mapping={
@@ -225,7 +225,7 @@ EXCHANGE_CONFIGS = {
         price_scale=1.0,
     ),
     "lobster": ExchangeConfig(
-        data_path="data/lobster/processed",
+        data_path="data/lobster",
         filename_template="{product}_{date}_messages.parquet",
         date_format="%Y-%m-%d",
         column_mapping={

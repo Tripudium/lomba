@@ -25,16 +25,8 @@ env/
 .python-version
 
 # Data
-data/tardis/
-data/bybit/
-data/binance/
-data/kraken/
-data/okx/
-data/poloniex/
-data/probit/
-data/upbit/
-data/zb/
-data/tardis/
 data/lobster/
+data/mic/
+data/databento/
 
 # Old scripts
