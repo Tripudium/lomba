@@ -15,8 +15,6 @@ dist/
 uv.lock
 
 # Virtual environment
-.venv/
-env/
 
 # Environment variables with API keys
 .env

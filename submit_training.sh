@@ -26,10 +26,8 @@
 #
 # =============================================================================
 
-# Create logs directory if it doesn't exist
 mkdir -p logs
 
-# Print job information
 echo "=========================================="
 echo "SLURM Job Information"
 echo "=========================================="
