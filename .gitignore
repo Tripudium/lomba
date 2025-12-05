@@ -19,6 +19,10 @@ uv.lock
 # Environment variables with API keys
 .env
 
+# Environment variables
+.venv
+env
+
 # Optional local Python version setting (if you don't want to enforce it)
 .python-version
 
