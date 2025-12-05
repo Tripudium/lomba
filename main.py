@@ -92,8 +92,8 @@ DEFAULT_CONFIG = {
     "data_config": {
         "source": "lobster",
         "product": "AAPL",
-        "start_time": "200601.000000",
-        "end_time": "200603.235959",
+        "start_time": "120621.093000",  # June 21, 2012 @ 9:30 AM
+        "end_time": "120621.160000",     # June 21, 2012 @ 4:00 PM
     },
     "tick_size": 0.01,
     "dt_cap": 10.0,
@@ -377,7 +377,7 @@ def load_messages(
             continue
 
     if not dfs:
-        print(f"No data loaded for {source} {product} {start_date} to {end_date}")
+        print(f"No data loaded for {source} {product} from {times[0]} to {times[-1]}")
         return pl.DataFrame(schema={
             "time": pl.Float64,
             "type": pl.Int32,
