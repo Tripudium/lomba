@@ -473,7 +473,7 @@ def compute_derived_features(
         pl.col("price").cast(pl.Float32),
         pl.col("price").diff().fill_null(0.0).alias("dp"),
         pl.col("time").diff().fill_null(0.0).clip(lower_bound=0.0).alias("dt_prev"),
-        pl.col("time").diff(-1).fill_null(time_scale).alias("dt_next"),
+        (pl.col("time").shift(-1).fill_null(df["time"][-1] + time_scale)-pl.col("time")).alias("dt_next"),
         
         # Has next event (all True except last)
         (pl.lit(True)).alias("has_next_event"),
@@ -509,8 +509,6 @@ def compute_derived_features(
         pl.col("type_code").cast(pl.Int32),
         pl.col("side_code").cast(pl.Int8),
         pl.col("level_proxy").cast(pl.Int32),
-        pl.col("tick_size").cast(pl.Float32),
-        pl.col("time_scale").cast(pl.Float32),
         pl.col("time_absolute").cast(pl.Float32),
     )
     
@@ -530,7 +528,6 @@ def compute_derived_features(
         time_scale=float(time_scale),
         time_absolute=features_df["time_absolute"].to_numpy().astype(np.float32),
     )
-
 
 # =============================================================================
 # Binning Utilities
@@ -573,7 +570,7 @@ def fit_quantile_edges(x: np.ndarray, num_bins: int) -> np.ndarray:
         edges = np.quantile(x, q, method="linear")
     except TypeError:
         edges = np.quantile(x, q, interpolation="linear")
-    edges = np.maximum.accumulate(edges)
+    edges = np.maximum.accumulate(edges) # Ensure monotonic increasing
     eps = 1e-9
     edges[0] -= eps
     edges[-1] += eps
@@ -781,16 +778,18 @@ def build_price_groups(
 
 @dataclass
 class HierFieldMap:
-    name: str
-    num_fine: int
-    num_coarse: int
-    max_resid: int
-    fine_to_coarse: np.ndarray
-    fine_to_resid: np.ndarray
-    group_sizes: np.ndarray
+    name: str                     # "price" (or "size", "time")
+    num_fine: int                 # 7 (total bins)
+    num_coarse: int               # 5 (groups)
+    max_resid: int                # 2 (largest group has 2 times)
+    # Lookup tables:
+    fine_to_coarse: np.ndarray    # [0,1,1,2,3,3,4] - which group each bin belongs to
+    fine_to_resid: np.ndarray     # [0,0,1,0,0,1,0] - position within group
+    group_sizes: np.ndarray       # [1,2,1,2,1] - size of each group
+    # For label smoothing
     coarse_neighbors: List[List[int]]
     resid_neighbors: List[List[List[int]]]
-    coarse_resid_to_fine: np.ndarray
+    coarse_resid_to_fine: np.ndarray         # Reverse lookup
 
     def valid_mask(self) -> np.ndarray:
         mask = np.zeros((self.num_coarse, self.max_resid), dtype=bool)
