@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=mamba_training
-#SBATCH --partition=gpu                    # GPU partition (NVIDIA L40 nodes)
+#SBATCH --partition=gpu                   # GPU partition (NVIDIA L40 nodes)
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8                 # 8 cores (GPU nodes have 32 cores total)
-#SBATCH --gres=gpu:1                      # Request 1 NVIDIA L40 GPU (48GB VRAM)
-#SBATCH --mem=64G                         # GPU nodes have 192GB RAM total
-#SBATCH --time=48:00:00                   # Adjust based on expected training time
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=10                # 10 cores (GPU nodes have 32 cores total)
+#SBATCH --mem-per-cpu=5960
+#SBATCH --gres=gpu:lovelace_l40:1         # Request 1 NVIDIA L40 GPU (48GB VRAM)
+#SBATCH --time=08:00:00                   # Adjust based on expected training time
 #SBATCH --output=logs/slurm-%j.out        # %j = job ID
 #SBATCH --error=logs/slurm-%j.err
 # #SBATCH --account=YOUR_ACCOUNT          # TODO: Add if required
@@ -50,23 +50,11 @@ module load cuda/12.1    # NVIDIA L40 supports CUDA 12.x
 module load cudnn/8.9    # cuDNN for PyTorch
 
 # Activate virtual environment
-# Choose the method that matches your setup:
 
-# Option 1: If using conda/mamba environment
-# conda activate lomba
-
-# Option 2: If using the local .venv
 source .venv/bin/activate
 
-# Option 3: If using uv (project uses uv for dependencies)
-# Note: You may need to install uv first or use pip within venv
-
 # Set WandB API key (required for experiment tracking)
-# Replace with your actual API key or set it in your ~/.bashrc
-export WANDB_API_KEY="your_wandb_api_key_here"
-
-# Optional: Set WandB mode
-# export WANDB_MODE=offline  # Use this if no internet connection on compute nodes
+export WANDB_API_KEY="00e7f4c5450fcf5969642612ae0f2a5776fecc67"
 
 # =============================================================================
 # Training Configuration
@@ -75,7 +63,7 @@ export WANDB_API_KEY="your_wandb_api_key_here"
 PROJECT_NAME="mamba-history"
 RUN_NAME="blythe_${SLURM_JOB_ID}"
 
-# Model hyperparameters (adjust as needed)
+# Model hyperparameters
 D_MODEL=512
 N_LAYERS=6
 BATCH_SIZE=32
